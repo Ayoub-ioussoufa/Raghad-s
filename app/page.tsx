@@ -109,7 +109,16 @@ export default function Home() {
   const starsRef = useRef<{ x: number; y: number; radius: number; twinkleSpeed: number; twinklePhase: number }[]>([])
   const messageTimerRef = useRef<NodeJS.Timeout | null>(null)
   const [isAudioPlaying, setIsAudioPlaying] = useState(false)
-  const [audio] = useState(new Audio("/music.mp3"))
+  const [audio, setAudio] = useState<HTMLAudioElement | null>(null) // Updated type
+
+
+  useEffect(() => {
+    // Check if we're on the client side before creating the audio object
+    if (typeof window !== 'undefined') {
+      const audioInstance = new Audio("/music.mp3")
+      setAudio(audioInstance)
+    }
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -145,6 +154,9 @@ export default function Home() {
     }
 
     function drawStars() {
+      if (!ctx) return
+      if (!canvas) return
+      
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       const time = Date.now() * 0.001;
@@ -164,6 +176,8 @@ export default function Home() {
     }
 
     function handleClick(e: MouseEvent) {
+      if (!canvas) return
+
       const rect = canvas.getBoundingClientRect()
       const x = e.clientX - rect.left
       const y = e.clientY - rect.top
@@ -186,7 +200,8 @@ export default function Home() {
           break
         }
       }
-      if (!isAudioPlaying) {
+
+      if (audio && !isAudioPlaying) {
         audio.loop = true
         audio.play()
         setIsAudioPlaying(true)
@@ -204,7 +219,7 @@ export default function Home() {
         clearTimeout(messageTimerRef.current)
       }
     }
-  }, [])
+  }, [isAudioPlaying, audio])
 
   return (
     <main className="milky-way-container">
