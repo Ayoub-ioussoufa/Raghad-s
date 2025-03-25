@@ -132,8 +132,8 @@ export default function Home() {
       const stars = []
 
       for (let i = 0; i < 2000; i++) {
-        const x = Math.random() * canvas.width
-        const y = Math.random() * canvas.height
+        const x = Math.random() * (canvas ? canvas.width : 0);
+        const y = Math.random() * (canvas ? canvas.height : 0);
         const radius = Math.random() * 1.5 + 0.3
         const twinkleSpeed = Math.random() * 0.01 + 0.001
         const twinklePhase = Math.random() * Math.PI * 2
