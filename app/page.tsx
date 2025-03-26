@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import "./milky-way.css"
 
 const MESSAGES = [
@@ -106,19 +106,67 @@ const MESSAGES = [
 export default function Home() {
   const [message, setMessage] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const starsRef = useRef<{ x: number; y: number; radius: number; twinkleSpeed: number; twinklePhase: number }[]>([])
+  const starsRef = useRef<{ x: number; y: number; radius: number }[]>([])
+  const animationRef = useRef<number>(0)
   const messageTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false)
-  const [audio, setAudio] = useState<HTMLAudioElement | null>(null) // Updated type
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
-
-  useEffect(() => {
-    // Check if we're on the client side before creating the audio object
-    if (typeof window !== 'undefined') {
-      const audioInstance = new Audio("/music.mp3")
-      setAudio(audioInstance)
+  const cleanup = useCallback(() => {
+    if (messageTimerRef.current) {
+      clearTimeout(messageTimerRef.current)
+      messageTimerRef.current = null
+    }
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+    }
+    if (audioRef.current) {
+      audioRef.current.pause()
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      audioRef.current = new Audio("/music.mp3")
+      audioRef.current.loop = true
+    }
+    return () => cleanup()
+  }, [cleanup])
+
+  const showMessage = useCallback((msg: string) => {
+    setMessage(msg)
+    
+    if (messageTimerRef.current) {
+      clearTimeout(messageTimerRef.current)
+    }
+    
+    messageTimerRef.current = setTimeout(() => {
+      setMessage(null)
+      messageTimerRef.current = null
+    }, 5000)
+  }, [])
+
+  const handleStarClick = useCallback((e: MouseEvent) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+
+    const clickedStar = starsRef.current.find(star => {
+      const distance = Math.sqrt(Math.pow(x - star.x, 2) + Math.pow(y - star.y, 2))
+      return distance < star.radius + 10
+    })
+
+    if (clickedStar) {
+      const randomIndex = Math.floor(Math.random() * MESSAGES.length)
+      showMessage(MESSAGES[randomIndex])
+
+      if (audioRef.current && audioRef.current.paused) {
+        audioRef.current.play().catch(e => console.log("Audio play failed:", e))
+      }
+    }
+  }, [showMessage])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -130,96 +178,54 @@ export default function Home() {
     const handleResize = () => {
       canvas.width = window.innerWidth
       canvas.height = window.innerHeight
-      generateStars()
-      drawStars()
+      generateStars(canvas)
     }
 
-    window.addEventListener("resize", handleResize)
-    handleResize()
-
-    function generateStars() {
+    function generateStars(canvas: HTMLCanvasElement) {
       const stars = []
+      const count = Math.min(2000, Math.floor((canvas.width * canvas.height) / 1000))
 
-      for (let i = 0; i < 2000; i++) {
-        const x = Math.random() * (canvas ? canvas.width : 0);
-        const y = Math.random() * (canvas ? canvas.height : 0);
-        const radius = Math.random() * 1.5 + 0.3
-        const twinkleSpeed = Math.random() * 0.01 + 0.001
-        const twinklePhase = Math.random() * Math.PI * 2
-
-        stars.push({ x, y, radius, twinkleSpeed, twinklePhase })
+      for (let i = 0; i < count; i++) {
+        stars.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          radius: Math.random() * 1.5 + 0.3
+        })
       }
 
       starsRef.current = stars
     }
 
-    function drawStars() {
-      if (!ctx) return
-      if (!canvas) return
+    const drawStars = () => {
+      if (!ctx || !canvas) return
       
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
       
-      const time = Date.now() * 0.001;
+      const time = Date.now() * 0.001
       
       starsRef.current.forEach(star => {
-        const twinkle = Math.sin(time * star.twinkleSpeed + star.twinklePhase) * 0.4 + 0.6;
+        const twinkle = Math.sin(time * (0.01 + Math.random() * 0.01)) * 0.4 + 0.6
         
-        const sizeVariation = 1 + Math.sin(time * star.twinkleSpeed * 0.5 + star.twinklePhase) * 0.15;
-        
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.radius * sizeVariation, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${twinkle})`;
-        ctx.fill();
-      });
+        ctx.beginPath()
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255, 255, 255, ${twinkle})`
+        ctx.fill()
+      })
       
-      requestAnimationFrame(drawStars);
+      animationRef.current = requestAnimationFrame(drawStars)
     }
 
-    function handleClick(e: MouseEvent) {
-      if (!canvas) return
-
-      const rect = canvas.getBoundingClientRect()
-      const x = e.clientX - rect.left
-      const y = e.clientY - rect.top
-
-      for (const star of starsRef.current) {
-        const distance = Math.sqrt(Math.pow(x - star.x, 2) + Math.pow(y - star.y, 2))
-        if (distance < star.radius + 10) {
-          const randomMessage = MESSAGES[Math.floor(Math.random() * MESSAGES.length)]
-          setMessage(randomMessage)
-
-          if (messageTimerRef.current) {
-            clearTimeout(messageTimerRef.current)
-          }
-
-          messageTimerRef.current = setTimeout(() => {
-            setMessage(null)
-            messageTimerRef.current = null
-          }, 5000)
-
-          break
-        }
-      }
-
-      if (audio && !isAudioPlaying) {
-        audio.loop = true
-        audio.play()
-        setIsAudioPlaying(true)
-      }
-    }
-
-    canvas.addEventListener("click", handleClick)
-
-    drawStars()
+    handleResize()
+    animationRef.current = requestAnimationFrame(drawStars)
+    window.addEventListener("resize", handleResize)
+    canvas.addEventListener("click", handleStarClick)
 
     return () => {
       window.removeEventListener("resize", handleResize)
-      canvas.removeEventListener("click", handleClick)
-      if (messageTimerRef.current) {
-        clearTimeout(messageTimerRef.current)
-      }
+      canvas.removeEventListener("click", handleStarClick)
+      cleanup()
     }
-  }, [isAudioPlaying, audio])
+  }, [handleStarClick, cleanup])
 
   return (
     <main className="milky-way-container">
